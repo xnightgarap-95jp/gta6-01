@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coral Keys — an open-world crime game</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b0e11; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #game, #game canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); z-index: 5; }
+  #health-wrap { position: absolute; top: 16px; left: 16px; width: 240px; }
+  #health-bar { height: 14px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); border-radius: 7px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #27ae60, #2ecc71); transition: width .2s; }
+  #health-num { font-size: 12px; margin-top: 2px; }
+  #money { position: absolute; top: 44px; left: 16px; font-size: 26px; font-weight: 700; color: #7dff9a; }
+  #stars { position: absolute; top: 16px; right: 16px; font-size: 26px; letter-spacing: 2px; color: rgba(255,255,255,.55); }
+  #stars.hot { color: #ffd23f; }
+  #clock { position: absolute; top: 52px; right: 18px; font-size: 18px; }
+  #objective { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); max-width: 46%; text-align: center; font-size: 16px; font-weight: 600; background: rgba(0,0,0,.5); padding: 8px 14px; border-radius: 8px; border-left: 4px solid #ffd23f; }
+  #minimap { position: absolute; right: 16px; bottom: 16px; width: 190px; height: 190px; border-radius: 50%; background: rgba(0,0,0,.4); }
+  #speed { position: absolute; right: 220px; bottom: 24px; font-size: 26px; font-weight: 700; }
+  #weapon-box { position: absolute; left: 16px; bottom: 16px; font-size: 16px; background: rgba(0,0,0,.5); padding: 8px 12px; border-radius: 8px; }
+  #ammo { font-size: 22px; font-weight: 700; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; display: none; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; box-shadow: 0 0 3px #000; }
+  #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+  #crosshair::after { left: 0; top: 8px; width: 18px; height: 2px; }
+  #toast { position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%); background: rgba(0,0,0,.65); padding: 10px 18px; border-radius: 8px; font-size: 16px; }
+  #hint { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); font-size: 12px; opacity: .75; background: rgba(0,0,0,.45); padding: 5px 10px; border-radius: 6px; }
+  /* ---------- Panels ---------- */
+  .panel { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(4, 10, 16, .62); z-index: 10; color: #fff; }
+  .card { text-align: center; background: rgba(10, 18, 26, .88); border: 1px solid rgba(255,210,63,.5); border-radius: 14px; padding: 34px 44px; max-width: 560px; }
+  .card h1 { margin: 0 0 6px; font-size: 52px; letter-spacing: 4px; color: #ffd23f; }
+  .card h2 { margin: 0 0 10px; font-size: 34px; color: #ffd23f; }
+  .card p { font-size: 16px; line-height: 1.5; opacity: .9; }
+  .card button { pointer-events: auto; margin: 8px 6px 0; padding: 12px 26px; font-size: 17px; font-weight: 700; border: none; border-radius: 9px; background: #ffd23f; color: #111; cursor: pointer; }
+  .card button:hover { background: #ffe27a; }
+  .card button.ghost { background: transparent; color: #ffd23f; border: 2px solid #ffd23f; }
+  .keys { font-size: 13px; opacity: .75; margin-top: 14px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud" class="hidden">
+  <div id="health-wrap">
+    <div id="health-bar"><div id="health-fill"></div></div>
+    <div id="health-num">100</div>
+  </div>
+  <div id="money">$0</div>
+  <div id="stars">☆☆☆☆☆</div>
+  <div id="clock">10:00</div>
+  <div id="objective"></div>
+  <canvas id="minimap" width="190" height="190"></canvas>
+  <div id="speed"></div>
+  <div id="weapon-box"><span id="weapon">FISTS</span> · <span id="ammo">—</span></div>
+  <div id="crosshair"></div>
+  <div id="toast" class="hidden"></div>
+  <div id="hint"></div>
+</div>
+
+<div id="menu" class="panel">
+  <div class="card">
+    <h1 id="menu-title">CORAL KEYS</h1>
+    <p id="menu-sub">An open-world crime story in a beach city. Steal cars, dodge the cops, run Eddie's jobs.</p>
+    <button id="menu-play">▶ New game</button>
+    <button id="menu-continue" class="ghost hidden">Continue</button>
+    <div class="keys">WASD move · Shift run · Space jump · E steal car · F punch · Click shoot · R reload<br>W/S drive · A/D steer · Space handbrake · C camera · P pause · progress saves automatically</div>
+  </div>
+</div>
+
+<div id="pause" class="panel hidden">
+  <div class="card">
+    <h2>Paused</h2>
+    <p>Take a breath. Coral Keys will wait.</p>
+    <button id="pause-resume">Resume</button>
+    <button id="pause-restart" class="ghost">Restart</button>
+  </div>
+</div>
+
+<div id="busted" class="panel hidden">
+  <div class="card">
+    <h2>BUSTED</h2>
+    <p>The cops caught up with Dana.</p>
+    <button id="busted-retry">Pay up and go again</button>
+  </div>
+</div>
+
+<div id="wasted" class="panel hidden">
+  <div class="card">
+    <h2>WASTED</h2>
+    <p>Dana is down.</p>
+    <button id="wasted-retry">Get back up</button>
+  </div>
+</div>
+
+<div id="done" class="panel hidden">
+  <div class="card">
+    <h2>JOB DONE</h2>
+    <p>All five of Eddie's jobs are finished. Coral Keys is Dana's city now — thanks for playing.</p>
+    <button id="done-again">Play again</button>
+  </div>
+</div>
+
+<script type="module" src="./src/boot.js"></script>
+</body>
+</html>
