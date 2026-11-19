@@ -1,193 +1,150 @@
-// Coral Keys — combat: fists, the pistol, and armed enemies.
+// Coral Keys — combat.
 //
-// Enemies are guards in dark jackets who stand their ground, shoot at
-// Dana when she is in range, and show a small 3D health bar over their
-// heads. Dana punches with F (a short-range arc in front of her) and
-// fires the pistol with the mouse (a ray from the camera through the
-// crosshair). Tracers are thin stretched boxes that fade in a blink.
+// Fists (F) and the pistol (click to fire, R to reload). Guards are
+// simple box figures with a health bar; they shoot back when the player
+// is in range and in front of them. Shooting is a raycast from the
+// camera through the crosshair, so what you aim at is what you hit.
 
-import * as THREE from '../vendor/three.module.min.js';
+import * as THREE from 'three';
 import { FIGHT } from './settings.js';
+import { playGunshot, playPunch } from './sound.js';
 
-export class Combat {
-  constructor(scene) {
-    this.scene = scene;
-    this.enemies = [];
-    this.tracers = [];
-    this.raycaster = new THREE.Raycaster();
-    this.raycaster.far = FIGHT.pistolRange;
+function makeGuardMesh() {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.68, 0.95, 0.4),
+    new THREE.MeshLambertMaterial({ color: 0x2b3a2e }),
+  );
+  body.position.y = 1.05;
+  group.add(body);
+  const head = new THREE.Mesh(
+    new THREE.BoxGeometry(0.42, 0.42, 0.42),
+    new THREE.MeshLambertMaterial({ color: 0xc99878 }),
+  );
+  head.position.y = 1.72;
+  group.add(head);
+  const cap = new THREE.Mesh(
+    new THREE.BoxGeometry(0.46, 0.16, 0.46),
+    new THREE.MeshLambertMaterial({ color: 0x1c241d }),
+  );
+  cap.position.y = 1.96;
+  group.add(cap);
+  const legMat = new THREE.MeshLambertMaterial({ color: 0x22262b });
+  for (const x of [-0.17, 0.17]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.62, 0.26), legMat);
+    leg.position.set(x, 0.31, 0);
+    group.add(leg);
   }
+  // Health bar: a thin green plane that shrinks as the guard is hit.
+  const barBg = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.1, 0.12),
+    new THREE.MeshBasicMaterial({ color: 0x111111 }),
+  );
+  barBg.position.y = 2.25;
+  group.add(barBg);
+  const bar = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.06, 0.08),
+    new THREE.MeshBasicMaterial({ color: 0x3ddc5a }),
+  );
+  bar.position.set(0, 2.25, 0.01);
+  group.add(bar);
+  group.userData.bar = bar;
+  group.userData.barBg = barBg;
+  return group;
+}
 
-  spawnEnemy(x, z, hp = FIGHT.enemyHealth) {
-    const group = new THREE.Group();
-    const jacket = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.85 });
-    const skin = new THREE.MeshStandardMaterial({ color: 0xd9a066, roughness: 0.8 });
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 0.75, 4, 10), jacket);
-    body.position.y = 1.05;
-    body.castShadow = true;
-    group.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 12, 10), skin);
-    head.position.y = 1.9;
-    group.add(head);
-    // A cap so guards read as guards at a glance.
-    const cap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.28, 0.3, 0.12, 12),
-      new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7 }),
-    );
-    cap.position.y = 2.1;
-    group.add(cap);
-    // Health bar: a dark backing plate and a green fill that shrinks.
-    const barBack = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.1, 0.14),
-      new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.85 }),
-    );
-    barBack.position.y = 2.45;
-    group.add(barBack);
-    const barFill = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.04, 0.09),
-      new THREE.MeshBasicMaterial({ color: 0x2ecc71 }),
-    );
-    barFill.position.set(0, 2.45, 0.01);
-    group.add(barFill);
-    group.position.set(x, 0, z);
-    group.name = 'enemy-guard';
-    this.scene.add(group);
-    const enemy = { mesh: group, barFill, hp, maxHp: hp, shootTimer: 1 + Math.random(), dead: false };
-    this.enemies.push(enemy);
-    return enemy;
-  }
+export function makeGuard(scene, x, z, heading = 0) {
+  const mesh = makeGuardMesh();
+  mesh.position.set(x, 0, z);
+  mesh.rotation.y = heading;
+  scene.add(mesh);
+  return {
+    mesh,
+    pos: new THREE.Vector3(x, 0, z),
+    heading,
+    health: FIGHT.guardHealth,
+    shootTimer: 1 + Math.random(),
+    alive: true,
+  };
+}
 
-  clearEnemies() {
-    for (const e of this.enemies) this.scene.remove(e.mesh);
-    this.enemies = [];
-  }
+export function removeGuard(scene, guard) {
+  scene.remove(guard.mesh);
+  guard.alive = false;
+}
 
-  // Enemies face Dana and shoot on a timer when close enough.
-  // Returns the damage they dealt this frame (0 when none).
-  update(dt, heroPos, onShoot) {
-    let damage = 0;
-    for (const e of this.enemies) {
-      if (e.dead) continue;
-      const dx = heroPos.x - e.mesh.position.x;
-      const dz = heroPos.z - e.mesh.position.z;
-      const dist = Math.hypot(dx, dz);
-      e.mesh.rotation.y = Math.atan2(dx, dz);
-      // Face the bar toward the camera is handled by the bar being a
-      // child that we counter-rotate in boot's camera update; here we
-      // just keep the bar upright by copying the group's yaw inverse.
-      e.barFill.parent.rotation.y = 0;
-      e.shootTimer -= dt;
-      if (dist < FIGHT.enemyShootRange && e.shootTimer <= 0) {
-        e.shootTimer = FIGHT.enemyShootDelay;
-        this.spawnTracer(e.mesh.position, heroPos, 0xff5533);
-        if (dist < FIGHT.enemyShootRange * 0.75 && Math.random() < 0.55) {
-          damage += 8;
-          onShoot?.(e);
-        }
+// Guards stand their ground, face the player, and shoot on a timer
+// when the player is close enough. Returns the damage dealt this frame.
+export function updateGuards(guards, dt, playerPos, onShot) {
+  let damage = 0;
+  for (const g of guards) {
+    if (!g.alive) continue;
+    const dx = playerPos.x - g.pos.x;
+    const dz = playerPos.z - g.pos.z;
+    const dist = Math.hypot(dx, dz);
+    g.heading = Math.atan2(dx, dz);
+    g.mesh.rotation.y = g.heading;
+    g.mesh.userData.bar.lookAt(playerPos.x, 2.25, playerPos.z);
+    g.mesh.userData.barBg.lookAt(playerPos.x, 2.25, playerPos.z);
+    if (dist < FIGHT.guardShootRange) {
+      g.shootTimer -= dt;
+      if (g.shootTimer <= 0) {
+        g.shootTimer = FIGHT.guardShootDelay;
+        // Guards are bad shots at range: hit chance falls with distance.
+        const hitChance = THREE.MathUtils.clamp(1.15 - dist / FIGHT.guardShootRange, 0.15, 0.85);
+        if (Math.random() < hitChance) damage += 9;
+        if (onShot) onShot(g);
       }
     }
-    // Fade tracers out.
-    for (const t of this.tracers) {
-      t.life -= dt;
-      t.mesh.material.opacity = Math.max(0, t.life / 0.18);
-    }
-    this.tracers = this.tracers.filter((t) => {
-      if (t.life <= 0) {
-        this.scene.remove(t.mesh);
-        return false;
-      }
-      return true;
-    });
-    return damage;
   }
+  return damage;
+}
 
-  spawnTracer(from, to, color) {
-    const dir = new THREE.Vector3(to.x - from.x, (to.y ?? 1.2) - (from.y ?? 1.2), to.z - from.z);
-    const len = dir.length();
-    if (len < 0.1) return;
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.05, 0.05, len),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }),
-    );
-    mesh.position.set((from.x + to.x) / 2, ((from.y ?? 1.2) + (to.y ?? 1.2)) / 2, (from.z + to.z) / 2);
-    mesh.lookAt(to.x, to.y ?? 1.2, to.z);
-    this.scene.add(mesh);
-    this.tracers.push({ mesh, life: 0.18 });
+export function damageGuard(guard, amount) {
+  guard.health -= amount;
+  const frac = Math.max(0, guard.health / FIGHT.guardHealth);
+  guard.mesh.userData.bar.scale.x = frac;
+  guard.mesh.userData.bar.position.x = -(1 - frac) * 0.53;
+  if (guard.health <= 0) {
+    guard.alive = false;
+    return true;
   }
+  return false;
+}
 
-  // A punch: anything alive within range and in front of the hero.
-  punch(origin, heading) {
-    const hits = [];
-    for (const e of this.enemies) {
-      if (e.dead) continue;
-      const dx = e.mesh.position.x - origin.x;
-      const dz = e.mesh.position.z - origin.z;
-      const d = Math.hypot(dx, dz);
-      if (d > FIGHT.punchRange) continue;
-      const ang = Math.atan2(dx, dz);
-      let diff = Math.abs(ang - heading);
-      if (diff > Math.PI) diff = Math.PI * 2 - diff;
-      if (diff < 1.1) hits.push(e);
-    }
-    for (const e of hits) this.damageEnemy(e, FIGHT.punchDamage);
-    return hits.length;
+// Fire the pistol from the camera through the crosshair. Returns the
+// guard hit, if any.
+export function shootPistol(camera, guards, range = FIGHT.pistolRange) {
+  playGunshot();
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera({ x: 0, y: 0 }, camera);
+  ray.far = range;
+  const meshes = guards.filter((g) => g.alive).map((g) => g.mesh);
+  const hits = ray.intersectObjects(meshes, true);
+  if (!hits.length) return null;
+  let obj = hits[0].object;
+  while (obj.parent && obj.parent !== null) {
+    const found = guards.find((g) => g.mesh === obj);
+    if (found) return found;
+    obj = obj.parent;
   }
+  return guards.find((g) => g.mesh === obj) || null;
+}
 
-  // A pistol shot from the camera through the screen centre.
-  shoot(camera, hero) {
-    if (hero.ammo <= 0) return { fired: false, reason: 'empty' };
-    hero.ammo -= 1;
-    this.raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-    const targets = this.enemies.filter((e) => !e.dead).map((e) => e.mesh);
-    const hits = this.raycaster.intersectObjects(targets, true);
-    if (hits.length > 0) {
-      let obj = hits[0].object;
-      while (obj.parent && obj.parent !== this.scene) {
-        if (obj.userData.enemy) break;
-        obj = obj.parent;
-      }
-      const enemy = this.enemies.find((e) => e.mesh === obj || e.mesh === obj.parent || this.isDescendant(e.mesh, hits[0].object));
-      if (enemy) {
-        this.damageEnemy(enemy, FIGHT.pistolDamage);
-        const p = hits[0].point;
-        this.spawnTracer(camera.position, { x: p.x, y: p.y, z: p.z }, 0xffe9a8);
-        return { fired: true, hit: true };
-      }
-    }
-    // Miss: tracer to a point far along the ray.
-    const far = this.raycaster.ray.at(FIGHT.pistolRange, new THREE.Vector3());
-    this.spawnTracer(camera.position, { x: far.x, y: far.y, z: far.z }, 0xffe9a8);
-    return { fired: true, hit: false };
+// Punch: the nearest living guard inside range and roughly in front.
+export function punch(heroPos, heroHeading, guards) {
+  playPunch();
+  for (const g of guards) {
+    if (!g.alive) continue;
+    const dx = g.pos.x - heroPos.x;
+    const dz = g.pos.z - heroPos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > FIGHT.punchRange) continue;
+    const ang = Math.atan2(dx, dz);
+    let diff = ang - heroHeading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    if (Math.abs(diff) < 1.1) return g;
   }
-
-  isDescendant(root, obj) {
-    let cur = obj;
-    while (cur) {
-      if (cur === root) return true;
-      cur = cur.parent;
-    }
-    return false;
-  }
-
-  damageEnemy(enemy, amount) {
-    enemy.hp -= amount;
-    const ratio = Math.max(0, enemy.hp / enemy.maxHp);
-    enemy.barFill.scale.x = ratio;
-    enemy.barFill.position.x = -(1 - ratio) * 0.52;
-    enemy.barFill.material.color.setHex(ratio > 0.5 ? 0x2ecc71 : ratio > 0.25 ? 0xf39c12 : 0xe74c3c);
-    if (enemy.hp <= 0) {
-      enemy.dead = true;
-      // Fall over and fade: rotate flat, then remove on the next sweep.
-      enemy.mesh.rotation.x = -Math.PI / 2;
-      enemy.mesh.position.y = 0.3;
-      setTimeout(() => {
-        this.scene.remove(enemy.mesh);
-        this.enemies = this.enemies.filter((e) => e !== enemy);
-      }, 2500);
-    }
-  }
-
-  aliveCount() {
-    return this.enemies.filter((e) => !e.dead).length;
-  }
+  return null;
 }

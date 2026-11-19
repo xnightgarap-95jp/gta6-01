@@ -1,176 +1,123 @@
-// Coral Keys — Dana Cole on foot.
+// Coral Keys — the hero, Dana Cole, on foot.
 //
-// Third-person walker: WASD moves relative to the camera, Shift runs,
-// Space jumps, F punches, E steals the nearest car, 1/2 swap weapons.
-// The hero is a capsule body with a jacket, jeans and a head, plus a
-// pistol mesh that appears when the pistol is drawn. Gravity and a
-// ground plane keep the feet on the street; buildings push the hero out
-// through the city's colliders.
+// Third-person movement: WASD moves relative to the camera, Shift runs,
+// Space jumps, and the camera orbits with the mouse (drag) or follows
+// behind while driving. The hero is a simple box figure with a jacket,
+// so she reads clearly at any distance.
 
-import * as THREE from '../vendor/three.module.min.js';
-import { HERO, CAR } from './settings.js';
+import * as THREE from 'three';
+import { HERO } from './settings.js';
+import { resolveCollisions } from './city.js';
 
-export class Hero {
-  constructor(scene) {
-    this.scene = scene;
-    this.group = new THREE.Group();
-    this.group.name = 'dana-cole';
-    const jacket = new THREE.MeshStandardMaterial({ color: 0x1f6f8b, roughness: 0.8 });
-    const jeans = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.9 });
-    const skin = new THREE.MeshStandardMaterial({ color: 0xf1c27d, roughness: 0.8 });
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 0.75, 4, 10), jacket);
-    body.position.y = 1.05;
-    body.castShadow = true;
-    this.group.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 12, 10), skin);
-    head.position.y = 1.9;
-    head.castShadow = true;
-    this.group.add(head);
-    // Hair: a dark cap on the back of the head.
-    const hair = new THREE.Mesh(
-      new THREE.SphereGeometry(0.28, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
-      new THREE.MeshStandardMaterial({ color: 0x2a1a0e, roughness: 1 }),
-    );
-    hair.position.y = 1.94;
-    this.group.add(hair);
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.2), jeans);
-    legL.position.set(-0.15, 0.32, 0);
-    const legR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.2), jeans);
-    legR.position.set(0.15, 0.32, 0);
-    this.group.add(legL);
-    this.group.add(legR);
-    this.legL = legL;
-    this.legR = legR;
-    // Pistol, hidden until the pistol is the active weapon.
-    const gun = new THREE.Group();
-    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.42), new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.7 }));
-    barrel.position.z = 0.18;
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 }));
-    grip.position.set(0, -0.1, 0);
-    gun.add(barrel);
-    gun.add(grip);
-    gun.position.set(0.42, 1.15, 0.3);
-    gun.visible = false;
-    this.group.add(gun);
-    this.gun = gun;
-    scene.add(this.group);
+export function makeHeroMesh() {
+  const group = new THREE.Group();
+  const jacket = new THREE.Mesh(
+    new THREE.BoxGeometry(0.66, 0.9, 0.4),
+    new THREE.MeshLambertMaterial({ color: 0x7a2e3d }),
+  );
+  jacket.position.y = 1.05;
+  group.add(jacket);
+  const head = new THREE.Mesh(
+    new THREE.BoxGeometry(0.42, 0.42, 0.42),
+    new THREE.MeshLambertMaterial({ color: 0xd9a986 }),
+  );
+  head.position.y = 1.72;
+  group.add(head);
+  const hair = new THREE.Mesh(
+    new THREE.BoxGeometry(0.46, 0.2, 0.46),
+    new THREE.MeshLambertMaterial({ color: 0x241a12 }),
+  );
+  hair.position.y = 1.95;
+  group.add(hair);
+  const legMat = new THREE.MeshLambertMaterial({ color: 0x2b3440 });
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.62, 0.26), legMat);
+  legL.position.set(-0.17, 0.31, 0);
+  group.add(legL);
+  const legR = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.62, 0.26), legMat);
+  legR.position.set(0.17, 0.31, 0);
+  group.add(legR);
+  const armMat = new THREE.MeshLambertMaterial({ color: 0x7a2e3d });
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.6, 0.2), armMat);
+  armL.position.set(-0.44, 1.05, 0);
+  group.add(armL);
+  const armR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.6, 0.2), armMat);
+  armR.position.set(0.44, 1.05, 0);
+  group.add(armR);
+  group.userData.legL = legL;
+  group.userData.legR = legR;
+  group.userData.armR = armR;
+  return group;
+}
 
-    this.pos = new THREE.Vector3(0, 0, 0);
-    this.velY = 0;
-    this.onGround = true;
-    this.heading = 0; // facing, radians
-    this.health = HERO.maxHealth;
-    this.money = 0;
-    this.weapon = 'fists'; // 'fists' | 'pistol'
-    this.ammo = 12;
-    this.reserveAmmo = 48;
-    this.inCar = false;
-    this.walkPhase = 0;
-    this.punchTimer = 0;
-    this.punchCooldown = 0;
-  }
+export function makeHero(scene, spawn) {
+  const mesh = makeHeroMesh();
+  scene.add(mesh);
+  return {
+    mesh,
+    pos: new THREE.Vector3(spawn.x, 0, spawn.z),
+    heading: Math.PI,
+    velY: 0,
+    onGround: true,
+    health: HERO.maxHealth,
+    cash: 0,
+    walkPhase: 0,
+    moving: false,
+  };
+}
 
-  place(x, z, heading = 0) {
-    this.pos.set(x, 0, z);
-    this.heading = heading;
-    this.sync();
-  }
-
-  sync() {
-    this.group.position.copy(this.pos);
-    this.group.rotation.y = this.heading;
-    this.gun.visible = this.weapon === 'pistol' && !this.inCar;
-  }
-
-  // input: {fwd, back, left, right, run, jump, camYaw}, dt, city.
-  step(input, dt, city) {
-    if (this.inCar) return;
-    const speed = input.run ? HERO.runSpeed : HERO.walkSpeed;
-    // Movement is relative to the camera yaw.
-    const sin = Math.sin(input.camYaw);
-    const cos = Math.cos(input.camYaw);
-    let mx = 0;
-    let mz = 0;
-    if (input.fwd) {
-      mx += -sin;
-      mz += -cos;
-    }
-    if (input.back) {
-      mx += sin;
-      mz += cos;
-    }
-    if (input.left) {
-      mx += -cos;
-      mz += sin;
-    }
-    if (input.right) {
-      mx += cos;
-      mz += -sin;
-    }
+// Move the hero for one frame. `camYaw` is the camera's heading so W
+// walks away from the camera. Returns nothing; the mesh is updated.
+export function updateHero(hero, input, camYaw, dt, colliders) {
+  const run = input.run ? HERO.runSpeed : HERO.walkSpeed;
+  let mx = 0;
+  let mz = 0;
+  if (input.forward) mz += 1;
+  if (input.back) mz -= 1;
+  if (input.left) mx -= 1;
+  if (input.right) mx += 1;
+  hero.moving = mx !== 0 || mz !== 0;
+  if (hero.moving) {
     const len = Math.hypot(mx, mz);
-    if (len > 0.01) {
-      mx /= len;
-      mz /= len;
-      this.pos.x += mx * speed * dt;
-      this.pos.z += mz * speed * dt;
-      this.heading = Math.atan2(mx, mz);
-      this.walkPhase += dt * speed * 1.6;
-    }
-    // Jump + gravity.
-    if (input.jump && this.onGround) {
-      this.velY = HERO.jumpSpeed;
-      this.onGround = false;
-    }
-    if (!this.onGround) {
-      this.velY -= HERO.gravity * dt;
-      this.pos.y += this.velY * dt;
-      if (this.pos.y <= 0) {
-        this.pos.y = 0;
-        this.velY = 0;
-        this.onGround = true;
-      }
-    }
-    if (this.punchTimer > 0) this.punchTimer -= dt;
-    if (this.punchCooldown > 0) this.punchCooldown -= dt;
-    const swing = len > 0.01 ? Math.sin(this.walkPhase) * 0.55 : 0;
-    this.legL.rotation.x = swing;
-    this.legR.rotation.x = -swing;
-    city.resolveCircle(this.pos, HERO.radius);
-    this.sync();
+    mx /= len;
+    mz /= len;
+    // Rotate the input by the camera yaw: W walks away from the camera.
+    const sin = Math.sin(camYaw);
+    const cos = Math.cos(camYaw);
+    const wx = mx * cos + mz * sin;
+    const wz = -mx * sin + mz * cos;
+    hero.pos.x += wx * run * dt;
+    hero.pos.z += wz * run * dt;
+    hero.heading = Math.atan2(wx, wz);
+    hero.walkPhase += dt * run * 1.6;
   }
+  if (input.jump && hero.onGround) {
+    hero.velY = HERO.jumpSpeed;
+    hero.onGround = false;
+  }
+  if (!hero.onGround) {
+    hero.velY -= HERO.gravity * dt;
+    hero.pos.y += hero.velY * dt;
+    if (hero.pos.y <= 0) {
+      hero.pos.y = 0;
+      hero.velY = 0;
+      hero.onGround = true;
+    }
+  }
+  hero.pos.x = THREE.MathUtils.clamp(hero.pos.x, -WORLD_HALF, WORLD_HALF_BEACH);
+  hero.pos.z = THREE.MathUtils.clamp(hero.pos.z, -WORLD_HALF, WORLD_HALF);
+  resolveCollisions(hero.pos, HERO.radius, colliders);
+  hero.mesh.position.copy(hero.pos);
+  hero.mesh.rotation.y = hero.heading;
+  const swing = hero.moving ? Math.sin(hero.walkPhase) * 0.5 : 0;
+  hero.mesh.userData.legL.rotation.x = swing;
+  hero.mesh.userData.legR.rotation.x = -swing;
+  hero.mesh.userData.armR.rotation.x = input.aiming ? -1.2 : -swing * 0.6;
+}
 
-  punch() {
-    if (this.punchCooldown > 0 || this.inCar) return false;
-    this.punchCooldown = 0.45;
-    this.punchTimer = 0.3;
-    return true;
-  }
-
-  takeDamage(amount) {
-    this.health = Math.max(0, this.health - amount);
-    return this.health <= 0;
-  }
-
-  heal(amount) {
-    this.health = Math.min(HERO.maxHealth, this.health + amount);
-  }
-
-  // Find a car close enough to steal, preferring traffic cars.
-  trySteal(traffic, playerCar) {
-    if (this.inCar) return null;
-    const car = traffic.nearestTo(this.pos.x, this.pos.z, CAR.stealRange);
-    if (car) {
-      traffic.remove(car);
-      return { kind: 'traffic', color: car.mesh.children[0].material.color.getHex(), x: car.mesh.position.x, z: car.mesh.position.z, heading: car.mesh.rotation.y };
-    }
-    // The player's own parked car can be re-entered from nearby.
-    if (playerCar.active) {
-      const dx = playerCar.pos.x - this.pos.x;
-      const dz = playerCar.pos.z - this.pos.z;
-      if (Math.hypot(dx, dz) < CAR.stealRange) {
-        return { kind: 'own', x: playerCar.pos.x, z: playerCar.pos.z, heading: playerCar.heading };
-      }
-    }
-    return null;
-  }
+// World bounds, set by boot after the city is built.
+let WORLD_HALF = 213;
+let WORLD_HALF_BEACH = 240;
+export function setWorldBounds(half, beachEdge) {
+  WORLD_HALF = half;
+  WORLD_HALF_BEACH = beachEdge;
 }

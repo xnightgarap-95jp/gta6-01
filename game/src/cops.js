@@ -1,129 +1,114 @@
-// Coral Keys — the wanted system and the Coral Keys police.
+// Coral Keys — the wanted system and the police.
 //
-// Stars rise when Dana is seen doing crimes (stealing a car, shooting,
-// punching a pedestrian) and fall again after hiding out of sight for a
-// while. Cruisers spawn at the city edge, chase the player, ram the car,
-// and arrest Dana if they sit on her long enough while she is slow.
-// The police car is a black-and-white cruiser with a light bar.
+// Stars rise when the player steals a car, shoots, or punches a guard,
+// and fall when the player stays out of sight. Cruisers spawn on the
+// roads near the player, chase, ram, and arrest: sit on the player long
+// enough and it is "busted".
 
-import * as THREE from '../vendor/three.module.min.js';
-import { WORLD, HEAT } from './settings.js';
-import { buildCarMesh } from './cars.js';
+import * as THREE from 'three';
+import { HEAT, WORLD } from './settings.js';
+import { makeCarMesh } from './cars.js';
 
-export class Police {
-  constructor(scene, city) {
-    this.scene = scene;
-    this.city = city;
-    this.stars = 0;
-    this.hiddenTime = 0;
-    this.decayTimer = 0;
-    this.cruisers = [];
-    this.arrestProgress = 0;
-    this.lastCrime = 0;
+export function makeWanted() {
+  return {
+    stars: 0,
+    hiddenTimer: 0,
+    arrestTimer: 0,
+    cruisers: [],
+  };
+}
+
+function spawnCruiser(scene, near, roadLines, rng) {
+  const mesh = makeCarMesh(0x111417, true);
+  scene.add(mesh);
+  // Spawn on a road a short drive from the player.
+  const line = roadLines[Math.floor(rng() * roadLines.length)];
+  const along = THREE.MathUtils.clamp(near.z + (rng() < 0.5 ? -60 : 60), -WORLD.half + 20, WORLD.half - 20);
+  const pos = new THREE.Vector3(line, 0, along);
+  return { mesh, pos, heading: 0, speed: 0, ramCooldown: 0 };
+}
+
+export function setStars(wanted, scene, n, roadLines, rng) {
+  wanted.stars = THREE.MathUtils.clamp(n, 0, HEAT.maxStars);
+  wanted.hiddenTimer = 0;
+  wanted.arrestTimer = 0;
+  const want = HEAT.cruisersFor(wanted.stars);
+  while (wanted.cruisers.length < want) {
+    wanted.cruisers.push(spawnCruiser(scene, { x: 0, z: 0 }, roadLines, rng));
   }
-
-  addHeat(amount, now) {
-    this.stars = Math.min(HEAT.maxStars, this.stars + amount);
-    this.hiddenTime = 0;
-    this.decayTimer = 0;
-    this.lastCrime = now;
-    this.syncCruisers();
+  while (wanted.cruisers.length > want) {
+    const c = wanted.cruisers.pop();
+    scene.remove(c.mesh);
   }
+}
 
-  clearHeat() {
-    this.stars = 0;
-    this.arrestProgress = 0;
-    this.syncCruisers();
-  }
-
-  // Keep the cruiser count matched to the star level.
-  syncCruisers() {
-    const want = HEAT.cruisersFor(this.stars);
-    while (this.cruisers.length < want) this.spawnCruiser();
-    while (this.cruisers.length > want) {
-      const c = this.cruisers.pop();
-      this.scene.remove(c.mesh);
+export function addStars(wanted, scene, n, roadLines, rng, playerPos) {
+  if (wanted.stars >= HEAT.maxStars) return;
+  setStars(wanted, scene, wanted.stars + n, roadLines, rng);
+  // New cruisers appear near the player, not at the map edge.
+  for (const c of wanted.cruisers) {
+    const d = Math.hypot(c.pos.x - playerPos.x, c.pos.z - playerPos.z);
+    if (d > 160) {
+      const line = roadLines[Math.floor(rng() * roadLines.length)];
+      c.pos.set(line, 0, THREE.MathUtils.clamp(playerPos.z + (rng() < 0.5 ? -55 : 55), -WORLD.half + 20, WORLD.half - 20));
     }
   }
+}
 
-  spawnCruiser() {
-    const mesh = buildCarMesh(0x111111);
-    // White doors + light bar make it read as a police car.
-    const doorMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.4, metalness: 0.4 });
-    const door = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.4, 1.4), doorMat);
-    door.position.set(0, 0.62, -0.2);
-    mesh.add(door);
-    const barMat = new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff2222, emissiveIntensity: 1.6 });
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.18, 0.4), barMat);
-    bar.position.set(0, 1.45, -0.25);
-    mesh.add(bar);
-    mesh.name = 'police-cruiser';
-    this.scene.add(mesh);
-    // Spawn at a random city edge.
-    const edge = Math.floor(Math.random() * 4);
-    const half = WORLD.half - 6;
-    const pos = [
-      { x: -half, z: (Math.random() - 0.5) * 2 * half },
-      { x: half, z: (Math.random() - 0.5) * 2 * half },
-      { x: (Math.random() - 0.5) * 2 * half, z: -half },
-      { x: (Math.random() - 0.5) * 2 * half, z: half },
-    ][edge];
-    const cruiser = {
-      mesh,
-      bar,
-      pos: new THREE.Vector3(pos.x, 0, pos.z),
-      heading: 0,
-      speed: 0,
-      flash: Math.random() * 2,
-    };
-    this.cruisers.push(cruiser);
-    return cruiser;
+// One frame of the chase. Returns 'busted' when the arrest completes,
+// otherwise null. `target` is the player's position and speed.
+export function updateCops(wanted, scene, dt, target, roadLines, rng) {
+  const want = HEAT.cruisersFor(wanted.stars);
+  while (wanted.cruisers.length < want) {
+    wanted.cruisers.push(spawnCruiser(scene, target, roadLines, rng));
   }
-
-  // dt step. target is the player's position; playerSpeed is their speed
-  // (car or foot). Returns 'arrested' when a bust lands, else null.
-  update(dt, target, playerSpeed, now) {
-    // Heat decays only after hiding for a while.
-    if (this.stars > 0) {
-      this.hiddenTime += dt;
-      if (this.hiddenTime > HEAT.hideDelay) {
-        this.decayTimer += dt;
-        if (this.decayTimer >= HEAT.hideStep) {
-          this.decayTimer = 0;
-          this.stars -= 1;
-          this.syncCruisers();
-        }
+  while (wanted.cruisers.length > want) {
+    const c = wanted.cruisers.pop();
+    scene.remove(c.mesh);
+  }
+  let nearest = Infinity;
+  for (const c of wanted.cruisers) {
+    const dx = target.x - c.pos.x;
+    const dz = target.z - c.pos.z;
+    const dist = Math.hypot(dx, dz);
+    nearest = Math.min(nearest, dist);
+    const wantHeading = Math.atan2(dx, dz);
+    let diff = wantHeading - c.heading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    c.heading += THREE.MathUtils.clamp(diff, -2.2 * dt, 2.2 * dt);
+    const chaseSpeed = Math.min(30, 14 + wanted.stars * 2.5 + (target.speed || 0) * 0.55);
+    c.speed = THREE.MathUtils.clamp(chaseSpeed, 0, 34);
+    c.pos.x += Math.sin(c.heading) * c.speed * dt;
+    c.pos.z += Math.cos(c.heading) * c.speed * dt;
+    c.mesh.position.copy(c.pos);
+    c.mesh.rotation.y = c.heading;
+    // Flash the light bar.
+    if (c.mesh.userData.lightBar) {
+      const on = Math.floor(performance.now() / 260) % 2 === 0;
+      c.mesh.userData.lightBar.material.color.setHex(on ? 0xff2233 : 0x2233ff);
+      c.mesh.userData.lightBar.material.emissive.setHex(on ? 0xaa1122 : 0x1122aa);
+    }
+    for (const w of c.mesh.userData.wheels) w.rotation.x += (c.speed * dt) / 0.36;
+    // Arrest: a cruiser sitting on the player fills the arrest timer.
+    if (dist < HEAT.arrestRange) {
+      wanted.arrestTimer += dt;
+      if (wanted.arrestTimer >= HEAT.arrestTime) return 'busted';
+    }
+  }
+  // Stars fall when no cruiser can see the player for a while.
+  if (wanted.stars > 0) {
+    if (nearest > 70) {
+      wanted.hiddenTimer += dt;
+      wanted.arrestTimer = Math.max(0, wanted.arrestTimer - dt);
+      if (wanted.hiddenTimer > HEAT.hideDelay + HEAT.hideStep) {
+        wanted.hiddenTimer = HEAT.hideDelay;
+        setStars(wanted, scene, wanted.stars - 1, roadLines, rng);
       }
+    } else {
+      wanted.hiddenTimer = 0;
+      wanted.arrestTimer = Math.max(0, wanted.arrestTimer - dt * 0.5);
     }
-    let arrested = false;
-    for (const c of this.cruisers) {
-      const dx = target.x - c.pos.x;
-      const dz = target.z - c.pos.z;
-      const dist = Math.hypot(dx, dz);
-      const wantHeading = Math.atan2(dx, dz);
-      // Steer toward the player, faster with more stars.
-      let diff = wantHeading - c.heading;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      c.heading += Math.max(-2.4 * dt, Math.min(2.4 * dt, diff));
-      const topSpeed = 20 + this.stars * 2.4;
-      c.speed = Math.min(topSpeed, c.speed + 14 * dt);
-      c.pos.x += Math.sin(c.heading) * c.speed * dt;
-      c.pos.z += Math.cos(c.heading) * c.speed * dt;
-      this.city.resolveCircle(c.pos, 1.2);
-      c.mesh.position.copy(c.pos);
-      c.mesh.rotation.y = c.heading;
-      // Flashing light bar.
-      c.flash += dt * 6;
-      c.bar.material.emissive.setHex(Math.sin(c.flash) > 0 ? 0xff2222 : 0x2244ff);
-      // Arrest: close and the player is barely moving.
-      if (dist < HEAT.arrestRange && playerSpeed < 3) {
-        this.arrestProgress += dt;
-        if (this.arrestProgress >= HEAT.arrestTime) arrested = true;
-      } else {
-        this.arrestProgress = Math.max(0, this.arrestProgress - dt * 0.5);
-      }
-    }
-    return arrested ? 'arrested' : null;
   }
+  return null;
 }

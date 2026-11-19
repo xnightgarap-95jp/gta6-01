@@ -1,11 +1,10 @@
-// Coral Keys — deterministic seeded random numbers.
+// Coral Keys — deterministic random numbers.
 //
-// The city, the traffic and the pedestrians are all laid out from one
-// seed, so the same seed always builds the same Coral Keys. The game
-// reads its seed from `?seed=` (default 1); screenshots always use seed 1.
+// The whole city is generated from one seed, so the same seed always
+// builds the same city. The seed comes from the URL (?seed=1) and the
+// screenshots always use seed 1.
 
-// mulberry32: a small, fast, well-behaved seeded PRNG.
-export function makeRng(seed) {
+export function mulberry32(seed) {
   let a = seed >>> 0;
   return function next() {
     a |= 0;
@@ -16,18 +15,23 @@ export function makeRng(seed) {
   };
 }
 
-export function makeDice(seed) {
-  const next = makeRng(seed);
+// A small helper object wrapping one RNG stream with the draws the
+// city code needs most often.
+export function makeRng(seed) {
+  const next = mulberry32(seed);
   return {
-    // Float in [0, 1).
-    float: () => next(),
-    // Float in [min, max).
-    range: (min, max) => min + next() * (max - min),
-    // Integer in [min, max] inclusive.
-    int: (min, max) => min + Math.floor(next() * (max - min + 1)),
-    // One element of an array.
-    pick: (arr) => arr[Math.floor(next() * arr.length)],
-    // True with the given probability.
-    chance: (p) => next() < p,
+    next,
+    range(min, max) {
+      return min + next() * (max - min);
+    },
+    int(min, max) {
+      return Math.floor(min + next() * (max - min + 1));
+    },
+    pick(list) {
+      return list[Math.floor(next() * list.length)];
+    },
+    chance(p) {
+      return next() < p;
+    },
   };
 }

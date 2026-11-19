@@ -1,51 +1,55 @@
-// Coral Keys — shared tuning numbers.
+// Coral Keys — shared tuning numbers (rebuild #3).
 //
-// Every module reads its numbers from here so the city, the cars, the
-// police and the missions all agree on the same world. Nothing in this
-// file needs three.js, so it can be read by any tool without a browser.
+// One place for every number the city, cars, police, combat and missions
+// agree on. Nothing here needs three.js, so any tool can read it plain.
 
 export const WORLD = {
   blocks: 9, // blocks across and down
-  blockSize: 34, // metres of building ground per block
+  blockSize: 34, // metres of built ground per block
   roadWidth: 12, // metres of asphalt between blocks
   get pitch() {
     return this.blockSize + this.roadWidth;
   },
-  // Half the width of the whole built-up area, roads included.
+  // Half-width of the built-up area, roads included.
   get half() {
     return (this.blocks * this.pitch + this.roadWidth) / 2;
   },
-  // The beach strip starts here (east edge) and the sea beyond it.
-  beachWidth: 26,
-  seaWidth: 120,
+  beachWidth: 26, // sand strip on the east edge
+  seaWidth: 130, // water beyond the beach
+  // Height of the tallest tower, used to size the skyline.
+  maxTower: 74,
 };
 
 export const HERO = {
-  walkSpeed: 6.5,
-  runSpeed: 11,
+  walkSpeed: 6,
+  runSpeed: 10.5,
   radius: 0.55,
   height: 1.8,
   maxHealth: 100,
-  jumpSpeed: 8,
-  gravity: 22,
+  jumpSpeed: 8.5,
+  gravity: 24,
+  // How far the third-person camera sits behind the hero.
+  camDistance: 7.5,
+  camHeight: 3.2,
 };
 
 export const CAR = {
-  accel: 18,
-  brake: 32,
-  reverseAccel: 11,
-  maxSpeed: 36,
-  maxReverse: 11,
-  steer: 2.0,
-  grip: 0.9,
-  handbrakeGrip: 0.62,
-  // How close the hero must be to steal a parked or traffic car.
+  accel: 20,
+  brake: 34,
+  reverseAccel: 12,
+  maxSpeed: 38,
+  maxReverse: 12,
+  steer: 2.1,
+  grip: 0.92,
+  handbrakeGrip: 0.6,
+  // Distance at which E can steal a parked or traffic car.
   stealRange: 3.4,
+  trafficCount: 14,
 };
 
 export const HEAT = {
   maxStars: 5,
-  hideDelay: 14, // seconds unseen before stars start to fall
+  hideDelay: 14, // seconds unseen before stars start falling
   hideStep: 6, // seconds per star lost while hidden
   // Cruisers on the road at each star level.
   cruisersFor(stars) {
@@ -61,9 +65,9 @@ export const FIGHT = {
   pistolRange: 90,
   punchDamage: 12,
   punchRange: 2.4,
-  enemyHealth: 70,
-  enemyShootRange: 42,
-  enemyShootDelay: 1.4,
+  guardHealth: 70,
+  guardShootRange: 42,
+  guardShootDelay: 1.4,
 };
 
 export const CONTROLS = {
@@ -84,7 +88,7 @@ export const CONTROLS = {
   resetCar: 'KeyT',
 };
 
-export const SAVE_KEY = 'coral-keys-save-v2';
+export const SAVE_KEY = 'coral-keys-save-v3';
 
 export const PALETTE = {
   sky: 0x8ec9e8,
@@ -96,4 +100,6 @@ export const PALETTE = {
   building: [0xb8a88a, 0x9aa7b8, 0xc49a7a, 0x8fa3a0, 0xd0b49a, 0xa89ac0],
   windowLit: 0xffd97a,
   windowDark: 0x2c3a4a,
+  // Car paint jobs the city spawns.
+  carPaint: [0xc23b2e, 0x2e6fc2, 0xe8b93a, 0x3aa655, 0x8a8f96, 0x7a4fb5, 0xe86a2a, 0x22262b],
 };
