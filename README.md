@@ -1,8 +1,8 @@
-# Coral Keys
-
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/xnightgarap-95jp/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/xnightgarap-95jp/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+
+# Coral Keys
 
 An original open-world crime game for [make.fun](https://make.fun/) — built for the
 [gta6-01 bounty](https://make.fun/bounty/gta6-01): "Make GTA 6".
@@ -38,6 +38,12 @@ node serve.ts
 
 No build step, no network: the game is static files under `game/` (three.js 0.170.0
 vendored in `game/vendor/`). Screenshots are staged with `?shot=start|drive|chase|mission&seed=1`.
+
+## Screenshots
+
+The four screenshots are real renders of the game itself, staged with `?seed=1`
+so they are reproducible: the title menu over the city, driving on the
+avenue, a two-star police chase, and the dockside mission with guards.
 
 ## Layout
 

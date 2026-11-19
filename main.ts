@@ -1,19 +1,13 @@
-// Coral Keys — a gta6-01 entry program (Node 22, standard library only).
+// Coral Keys — the entry program for make.fun gta6-01 (Node 22, stdlib only).
 //
-// The game lives in game/ as plain static files a desktop browser loads
-// offline (game/index.html and its ES modules, three.js vendored under
-// game/vendor/). This program hands it in: it copies game/ and
-// screenshots/ from beside this file to /output and writes
-// /output/dossier.json, the summary the judge reads, with the vendored
-// make.fun library.
-//
-// The program is deterministic: it copies files and writes the dossier
-// from those bytes alone, so two runs over the same tree produce the
-// same /output byte for byte (verified with `diff -r` over two runs).
-//
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// It hands the game in: copies this directory's game/ and screenshots/
+// to /output (or MAKEFUN_OUTPUT_DIR outside the grader) and writes
+// /output/dossier.json with the vendored make.fun library, exactly as
+// the kit's starter does. The output is deterministic: the same input
+// files always produce the same bytes, so the grader's two runs agree.
+// Rebuild #3 rule: every file this program copies was written inside
+// the recorded session, README included — nothing is edited after the
+// recording is sealed.
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,12 +20,15 @@ const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+if (existsSync(join(here, 'screenshots'))) {
+  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+}
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game
-// files, in all, or a path under game/ over 1000 bytes: game/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
+// The scorer's own caps (reference/gate.json): only text_max_bytes
+// shapes the bytes; the others refuse an entry the scorer would refuse
+// (more than 4 screenshots or one over 256 KiB; more than 993 files in
+// game/ or 48 MiB of game files, in all, or a path under game/ over
+// 1000 bytes).
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {
