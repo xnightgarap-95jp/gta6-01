@@ -1,8 +1,8 @@
 # Coral Keys
 
-![make.fun](https://make.fun/badge/gta6-01.svg)
-![make.fun rank](https://make.fun/badge/xnightgarap-95jp/gta6-01/rank.svg)
-![make.fun reward](https://make.fun/badge/xnightgarap-95jp/gta6-01/reward.svg)
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/xnightgarap-95jp/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/xnightgarap-95jp/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
 An original open-world crime game for [make.fun](https://make.fun/) — built for the
 [gta6-01 bounty](https://make.fun/bounty/gta6-01): "Make GTA 6".
